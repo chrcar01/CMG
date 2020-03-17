@@ -1,9 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CMG.Tools.Evaluators;
+using CMG.Tools.Evaluators.Interfaces;
+using CMG.Tools.Evaluators.Sensors;
+using Moq;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace CMG.Tools.Tests.Evaluators
@@ -15,15 +20,26 @@ namespace CMG.Tools.Tests.Evaluators
         public void CanParse()
         {
             var calculator = new MathNetCalculator();
-            var deviceFactory = new SensorFactory(calculator);
-            var parser = new SpanSensorLogParser(deviceFactory);
+            var factory = new SensorFactory(calculator);
+            factory.RegisterSensor("thermometer", (n, refs, calc) => new ThermometerSensor(n, refs["temperature"], calc));
+            factory.RegisterSensor("humidity", (n, refs, calc) => new HumiditySensor(n, (decimal)refs["humidity"]));
+            factory.RegisterSensor("monoxide", (n, refs, calc) => new MonoxideSensor(n, (int)refs["ppm"]));
+
+            var parser = new SpanSensorLogParser(factory);
             var content = GetInputData();
-            parser.Parse(content);
-            //var sensors = parser.Parse(content)?.ToDictionary(k => k.Name, v => v.GetStatus());
-            //Console.WriteLine(JsonSerializer.Serialize(sensors, new JsonSerializerOptions { WriteIndented = true }));
+            
+            var sensors = parser.Parse(content)?.ToDictionary(k => k.Name, v => v.GetStatus());
+            Console.WriteLine(JsonSerializer.Serialize(sensors, new JsonSerializerOptions { WriteIndented = true }));
         }
 
-
+        [Test]
+        public void CanExtractReferenceValues()
+        {
+            var line = "70.1 45.6 7".AsSpan();
+            var parser = new SpanSensorLogParser(Mock.Of<ISensorFactory>());
+            var refValues = parser.ExtractReferenceValues(line);
+            Assert.That(refValues.Count, Is.EqualTo(3));
+        }
 
         private string GetInputData()
         {
